@@ -117,7 +117,6 @@ func (m *Message) UnmarshalSets(r io.Reader, s session.Session, t *Translate) er
 		default:
 			ds := DataSet{}
 			ds.Header = header
-
 			var (
 				tm session.Template
 				tr TemplateRecord
@@ -373,12 +372,7 @@ func (ts TemplateSet) String() string {
 	return fmt.Sprintf("%s (%s)", ts.Header, "") // ts.TemplateRecord)
 }
 
-func (ts *TemplateSet) UnmarshalRecords(r io.Reader) error {
-	buffer := new(bytes.Buffer)
-	if _, err := buffer.ReadFrom(r); err != nil {
-		return err
-	}
-
+func (ts *TemplateSet) UnmarshalRecords(buffer *bytes.Buffer) error {
 	// As long as there are more than 4 bytes in the buffer, we parse the next
 	// TemplateRecord, otherwise it's padding.
 	ts.Records = make([]TemplateRecord, 0)
@@ -476,12 +470,7 @@ func (ots OptionsTemplateSet) String() string {
 	return fmt.Sprintf("%s (%d records)", ots.Header, len(ots.Records))
 }
 
-func (ots *OptionsTemplateSet) UnmarshalRecords(r io.Reader) error {
-	buffer := new(bytes.Buffer)
-	if _, err := buffer.ReadFrom(r); err != nil {
-		return err
-	}
-
+func (ots *OptionsTemplateSet) UnmarshalRecords(buffer *bytes.Buffer) error {
 	// As long as there are more than 4 bytes in the buffer, we parse the next
 	// TemplateRecord, otherwise it's padding.
 	ots.Records = make([]OptionsTemplateRecord, 0)
@@ -522,14 +511,14 @@ func (otr OptionsTemplateRecord) String() string {
 		otr.TemplateID, otr.FieldCount, otr.Fields, otr.ScopeFieldCount, otr.ScopeFields)
 }
 
-func (otr *OptionsTemplateRecord) Unmarshal(r io.Reader) error {
-	if err := read.Uint16(&otr.TemplateID, r); err != nil {
+func (otr *OptionsTemplateRecord) Unmarshal(buffer *bytes.Buffer) error {
+	if err := read.Uint16(&otr.TemplateID, buffer); err != nil {
 		return err
 	}
-	if err := read.Uint16(&otr.FieldCount, r); err != nil {
+	if err := read.Uint16(&otr.FieldCount, buffer); err != nil {
 		return err
 	}
-	if err := read.Uint16(&otr.ScopeFieldCount, r); err != nil {
+	if err := read.Uint16(&otr.ScopeFieldCount, buffer); err != nil {
 		return err
 	}
 
@@ -537,8 +526,6 @@ func (otr *OptionsTemplateRecord) Unmarshal(r io.Reader) error {
 		return errProtocol(fmt.Sprintf("scope field count %d higher than field count %d", otr.ScopeFieldCount, otr.FieldCount))
 	}
 
-	buffer := new(bytes.Buffer)
-	buffer.ReadFrom(r)
 	if debug {
 		hexdump(buffer.Bytes())
 	}
@@ -562,10 +549,10 @@ type DataSet struct {
 	Records []DataRecord
 }
 
-func (ds *DataSet) Unmarshal(r io.Reader, tr TemplateRecord, t *Translate) error {
-	buffer := new(bytes.Buffer)
-	buffer.ReadFrom(r)
-
+func (ds *DataSet) Unmarshal(buffer *bytes.Buffer, tr TemplateRecord, t *Translate) error {
+	if debug {
+		debugLog.Printf("After Read From buffer len=%d cap=%d", buffer.Len(), buffer.Cap())
+	}	
 	ds.Records = make([]DataRecord, 0)
 	for buffer.Len() > 0 {
 		var dr = DataRecord{}
@@ -573,7 +560,7 @@ func (ds *DataSet) Unmarshal(r io.Reader, tr TemplateRecord, t *Translate) error
 		if err := dr.Unmarshal(buffer, tr.Fields, t); err != nil {
 			return err
 		}
-		ds.Records = append(ds.Records, dr)
+		ds.Records = append(ds.Records, dr)        
 	}
 
 	return nil
@@ -584,14 +571,8 @@ type DataRecord struct {
 	Fields     Fields
 }
 
-func (dr *DataRecord) Unmarshal(r io.Reader, fss FieldSpecifiers, t *Translate) error {
-	// We don't know how many records there are in a Data Set, so we'll keep
-	// reading until we exhausted the buffer.
-	buffer := new(bytes.Buffer)
-	if _, err := buffer.ReadFrom(r); err != nil {
-		return err
-	}
-
+func (dr *DataRecord) Unmarshal(buffer *bytes.Buffer, fss FieldSpecifiers, t *Translate) error {
+	// Multiple records are being handled in the dataset unmarshal function
 	dr.Fields = make(Fields, 0)
 	var err error
 	for i := 0; buffer.Len() > 0 && i < len(fss); i++ {
@@ -599,15 +580,17 @@ func (dr *DataRecord) Unmarshal(r io.Reader, fss FieldSpecifiers, t *Translate) 
 		if err = f.Unmarshal(buffer, fss[i]); err != nil {
 			return err
 		}
+
 		dr.Fields = append(dr.Fields, f)
 	}
-
+	if debug {
+           debugLog.Printf("Buffer length in a record %d",buffer.Len())
+    }
 	if t != nil && len(dr.Fields) > 0 {
 		if err := t.Record(dr); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 

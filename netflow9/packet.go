@@ -59,7 +59,6 @@ func (p *Packet) UnmarshalFlowSets(r io.Reader, s session.Session, t *Translate)
 			}
 			return err
 		}
-
 		switch header.ID {
 		case 0: // Template FlowSet
 			tfs := TemplateFlowSet{}
@@ -92,7 +91,6 @@ func (p *Packet) UnmarshalFlowSets(r io.Reader, s session.Session, t *Translate)
 			}
 
 			p.TemplateFlowSets = append(p.TemplateFlowSets, tfs)
-			return nil
 
 		case 1: // Options Template FlowSet
 			ofs := OptionsTemplateFlowSet{}
@@ -250,12 +248,7 @@ type TemplateFlowSet struct {
 	Records []TemplateRecord
 }
 
-func (tfs *TemplateFlowSet) UnmarshalRecords(r io.Reader) error {
-	buffer := new(bytes.Buffer)
-	if _, err := buffer.ReadFrom(r); err != nil {
-		return err
-	}
-
+func (tfs *TemplateFlowSet) UnmarshalRecords(buffer *bytes.Buffer) error {
 	// As long as there are more than 4 bytes in the buffer, we parse the next
 	// TemplateRecord, otherwise it's padding.
 	tfs.Records = make([]TemplateRecord, 0)
@@ -306,16 +299,16 @@ func (tr TemplateRecord) Size() int {
 	return size
 }
 
-func (tr *TemplateRecord) Unmarshal(r io.Reader) error {
-	if err := read.Uint16(&tr.TemplateID, r); err != nil {
+func (tr *TemplateRecord) Unmarshal(buffer *bytes.Buffer) error {
+	if err := read.Uint16(&tr.TemplateID, buffer); err != nil {
 		return err
 	}
-	if err := read.Uint16(&tr.FieldCount, r); err != nil {
+	if err := read.Uint16(&tr.FieldCount, buffer); err != nil {
 		return err
 	}
 
 	tr.Fields = make(FieldSpecifiers, tr.FieldCount)
-	if err := tr.Fields.Unmarshal(r); err != nil {
+	if err := tr.Fields.Unmarshal(buffer); err != nil {
 		return err
 	}
 
@@ -398,10 +391,8 @@ type DataFlowSet struct {
 	Bytes   []byte
 }
 
-func (dfs *DataFlowSet) Unmarshal(r io.Reader, tr TemplateRecord, t *Translate) error {
-	buffer := new(bytes.Buffer)
-	buffer.ReadFrom(r)
-
+func (dfs *DataFlowSet) Unmarshal(buffer *bytes.Buffer, tr TemplateRecord, t *Translate) error {
+	
 	dfs.Records = make([]DataRecord, 0)
 	for buffer.Len() >= 4 { // Continue until only padding alignment bytes left
 		var dr = DataRecord{}
@@ -420,13 +411,9 @@ type DataRecord struct {
 	Fields     Fields
 }
 
-func (dr *DataRecord) Unmarshal(r io.Reader, fss FieldSpecifiers, t *Translate) error {
+func (dr *DataRecord) Unmarshal(buffer *bytes.Buffer, fss FieldSpecifiers, t *Translate) error {
 	// We don't know how many records there are in a Data Set, so we'll keep
 	// reading until we exhausted the buffer.
-	buffer := new(bytes.Buffer)
-	if _, err := buffer.ReadFrom(r); err != nil {
-		return err
-	}
 
 	dr.Fields = make(Fields, 0)
 	var err error
