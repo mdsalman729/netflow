@@ -91,6 +91,12 @@ func (p *Packet) UnmarshalFlowSets(r io.Reader, s session.Session, t *Translate)
 			}
 
 			p.TemplateFlowSets = append(p.TemplateFlowSets, tfs)
+                        
+                        if i >= p.Header.Count {
+                              return nil
+                        } else {
+                                continue
+                        }
 
 		case 1: // Options Template FlowSet
 			ofs := OptionsTemplateFlowSet{}
